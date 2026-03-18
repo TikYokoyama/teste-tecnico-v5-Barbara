@@ -2,13 +2,16 @@
 
 import type { Property, PropertySummary } from "@repo/shared/domain/Property";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://api.imoveis.example.com";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ?? "https://api.imoveis.example.com";
 
 /**
  * Busca lista de imóveis com filtros.
  *
- * ⚠️ BUG 1: Não passa Content-Type header no POST de filtros complexos.
+ * ⚠️ BUG 1: Não passa Content-Type header no POST de filtros complexos
+ *        -> RESOLVIDO: Removido uso de POST — agora utiliza apenas GET com query params
  * ⚠️ BUG 2: Não trata response.ok — erros 4xx/5xx não lançam exceção.
+ *        -> RESOLVIDO: Tratamento de erros com response.ok implementado
  */
 export async function fetchProperties(filters?: {
   neighborhoods?: string[];
@@ -28,9 +31,13 @@ export async function fetchProperties(filters?: {
   if (filters?.areaMin) params.set("area_min", String(filters.areaMin));
 
   const res = await fetch(`${API_BASE}/properties?${params.toString()}`);
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
-  const data = await res.json();
-  return data;
+
+  if (!res.ok) {
+    const message = await res.text();
+    throw new Error(`API error: ${res.status} - ${message}`);
+  }
+
+  return res.json();
 }
 
 /**

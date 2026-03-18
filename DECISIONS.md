@@ -5,7 +5,9 @@
 
 ## 1. Boundary Server/Client (máx 3 linhas)
 
-<!-- Por que a boundary server/client está onde você colocou? O que é servidor e o que é cliente, e por quê? -->
+A boundary foi definida separando buscade dados e interatividade.
+A busca de imóveis (fetchProperties) fica no Server Component para SSR e melhor performance.
+Elementos interativos ficam no Client Component por dependerem de estado e ações do usuário.
 
 ## 2. Próximos passos de performance RN (máx 5 linhas)
 

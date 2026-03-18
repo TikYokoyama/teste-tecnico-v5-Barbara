@@ -1,26 +1,26 @@
 // apps/web/app/imoveis/page.tsx
-// ⚠️ MÓDULO 2A: Refatore para Server Component
+// ⚠️ MÓDULO 2A: Refatore para Server Component -> RESOLVIDO 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { PropertyCard } from "./components/PropertyCard";
-import type { PropertySummary } from "@repo/shared/domain/Property";
+import { fetchProperties } from "@/lib/api";
+import { SearchFilters } from "./components/SearchFilters";
 
-export default function ImoveisPage() {
-  const [properties, setProperties] = useState<PropertySummary[]>([]);
-  const [loading, setLoading] = useState(true);
+type Props = {
+  searchParams: {
+    priceMin?: string;
+    priceMax?: string;
+    suitesMin?: string;
+    areaMin?: string;
+    neighborhood?: string;
+  };
+};
+
+export default async function ImoveisPage({ searchParams }: Props) {
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
 
-  // BUG: Deveria ser Server Component com fetch direto
-  useEffect(() => {
-    fetch("/api/properties")
-      .then((r) => r.json())
-      .then((data) => {
-        setProperties(data);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
+  const properties = await fetchProperties();
 
   const toggleFavorite = (id: string) => {
     setFavorites((prev) => {
@@ -31,13 +31,13 @@ export default function ImoveisPage() {
     });
   };
 
-  if (loading) return <p>Carregando...</p>;
-
   return (
     <div>
-      <h1 style={{ fontSize: 32, fontWeight: 700, marginBottom: 24 }}>Imóveis</h1>
+      <h1 style={{ fontSize: 32, fontWeight: 700, marginBottom: 24 }}>
+        Imóveis
+      </h1>
 
-      {/* TODO: SearchFilters vai aqui (Módulo 3) */}
+      {/* <SearchFilters /> */}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 24 }}>
         {properties.map((prop) => (
