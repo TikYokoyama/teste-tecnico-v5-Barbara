@@ -5,9 +5,7 @@
 
 ## 1. Boundary Server/Client (máx 3 linhas)
 
-A boundary foi definida separando buscade dados e interatividade.
-A busca de imóveis (fetchProperties) fica no Server Component para SSR e melhor performance.
-Elementos interativos ficam no Client Component por dependerem de estado e ações do usuário.
+A lógica de dados foi mantida no Server Component (page.tsx), que consome searchParams e realiza o fetch. A interatividade (favoritos) foi isolada em um Client Component (PropertyList), garantindo separação clara entre renderização no servidor e estado no cliente.
 
 ## 2. Próximos passos de performance RN (máx 5 linhas)
 

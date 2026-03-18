@@ -1,35 +1,23 @@
 // apps/web/app/imoveis/page.tsx
 // ⚠️ MÓDULO 2A: Refatore para Server Component -> RESOLVIDO 
-"use client";
+// "use client";
 
-import { useState } from "react";
-import { PropertyCard } from "./components/PropertyCard";
 import { fetchProperties } from "@/lib/api";
 import { SearchFilters } from "./components/SearchFilters";
+import { PropertyList } from "./components/PropertyList";
 
 type Props = {
   searchParams: {
-    priceMin?: string;
-    priceMax?: string;
-    suitesMin?: string;
-    areaMin?: string;
-    neighborhood?: string;
+    neighborhoods?: string[];
+    priceMin?: number;
+    priceMax?: number;
+    suitesMin?: number;
+    areaMin?: number;
   };
 };
 
 export default async function ImoveisPage({ searchParams }: Props) {
-  const [favorites, setFavorites] = useState<Set<string>>(new Set());
-
-  const properties = await fetchProperties();
-
-  const toggleFavorite = (id: string) => {
-    setFavorites((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
+  const properties = await fetchProperties(searchParams);
 
   return (
     <div>
@@ -37,17 +25,10 @@ export default async function ImoveisPage({ searchParams }: Props) {
         Imóveis
       </h1>
 
-      {/* <SearchFilters /> */}
+      <SearchFilters />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 24 }}>
-        {properties.map((prop) => (
-          <PropertyCard
-            key={prop.id}
-            property={prop}
-            onFavorite={toggleFavorite}
-            isFavorited={favorites.has(prop.id)}
-          />
-        ))}
+        <PropertyList properties={properties} />
       </div>
     </div>
   );
