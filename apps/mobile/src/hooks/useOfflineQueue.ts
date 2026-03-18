@@ -47,24 +47,154 @@ interface UseOfflineQueueOptions {
  *
  * - processing: boolean indicando se está processando a fila
  */
-export function useOfflineQueue({ executor, maxRetries = 5 }: UseOfflineQueueOptions) {
-  // TODO: Candidato implementa
+
+interface UseOfflineQueueOptions {
+  executor: (op: QueuedOperation) => Promise<void>;
+  maxRetries?: number;
+}
+
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function useOfflineQueue({
+  executor,
+  maxRetries = 5,
+}: UseOfflineQueueOptions) {
+  const [queue, setQueue] = useState<QueuedOperation[]>([]);
+  const [processing, setProcessing] = useState(false);
+
+  // Ref para acessar o estado atual dentro do processQueue sem dependências stale
+  const queueRef = useRef<QueuedOperation[]>([]);
+  const processingRef = useRef(false);
+
+  const updateQueue = useCallback(
+    (updater: (prev: QueuedOperation[]) => QueuedOperation[]) => {
+      setQueue((prev) => {
+        const next = updater(prev);
+        queueRef.current = next;
+        return next;
+      });
+    },
+    [],
+  );
 
   const enqueue = useCallback(
-    (op: Omit<QueuedOperation, "id" | "createdAt" | "retryCount" | "status">) => {
-      throw new Error("Not implemented");
+    (
+      op: Omit<QueuedOperation, "id" | "createdAt" | "retryCount" | "status">,
+    ) => {
+      updateQueue((prev) => {
+        // Idempotência: não duplica se já existe PENDING com mesma entityId + type
+        const alreadyPending = prev.some(
+          (item) =>
+            item.entityId === op.entityId &&
+            item.type === op.type &&
+            item.status === "PENDING",
+        );
+
+        if (alreadyPending) return prev;
+
+        const newOp: QueuedOperation = {
+          ...op,
+          id: generateId(),
+          createdAt: Date.now(),
+          retryCount: 0,
+          status: "PENDING",
+        };
+
+        return [...prev, newOp];
+      });
     },
-    []
+    [updateQueue],
   );
 
   const processQueue = useCallback(async (): Promise<ProcessResult> => {
-    throw new Error("Not implemented");
-  }, []);
+    // Guard: não processa se já está processando
+    if (processingRef.current) {
+      return { processed: 0, failed: 0, skipped: 0 };
+    }
+
+    processingRef.current = true;
+    setProcessing(true);
+
+    const result: ProcessResult = { processed: 0, failed: 0, skipped: 0 };
+
+    // Pega snapshot das operações PENDING em ordem FIFO
+    const pending = queueRef.current
+      .filter((op) => op.status === "PENDING")
+      .sort((a, b) => a.createdAt - b.createdAt);
+
+    for (const op of pending) {
+      // Marca como PROCESSING
+      updateQueue((prev) =>
+        prev.map((item) =>
+          item.id === op.id ? { ...item, status: "PROCESSING" } : item,
+        ),
+      );
+
+      // Backoff exponencial: 1s, 2s, 4s, 8s, 16s
+      if (op.retryCount > 0) {
+        await sleep(1000 * Math.pow(2, op.retryCount - 1));
+      }
+
+      try {
+        await executor({ ...op, status: "PROCESSING" });
+
+        // Sucesso → DONE
+        updateQueue((prev) =>
+          prev.map((item) =>
+            item.id === op.id ? { ...item, status: "DONE" } : item,
+          ),
+        );
+
+        result.processed++;
+      } catch {
+        const nextRetryCount = op.retryCount + 1;
+
+        if (nextRetryCount >= maxRetries) {
+          // Esgotou tentativas → FAILED
+          updateQueue((prev) =>
+            prev.map((item) =>
+              item.id === op.id
+                ? { ...item, status: "FAILED", retryCount: nextRetryCount }
+                : item,
+            ),
+          );
+
+          result.failed++;
+        } else {
+          // Volta pra PENDING com retryCount incrementado
+          updateQueue((prev) =>
+            prev.map((item) =>
+              item.id === op.id
+                ? { ...item, status: "PENDING", retryCount: nextRetryCount }
+                : item,
+            ),
+          );
+
+          result.skipped++;
+        }
+      }
+    }
+
+    processingRef.current = false;
+    setProcessing(false);
+
+    return result;
+  }, [executor, maxRetries, updateQueue]);
+
+  const pending = queue.filter(
+    (op) => op.status === "PENDING" || op.status === "PROCESSING",
+  );
 
   return {
     enqueue,
     processQueue,
-    pending: [] as QueuedOperation[],
-    processing: false,
+    pending,
+    processing,
   };
 }

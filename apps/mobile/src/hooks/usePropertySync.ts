@@ -1,11 +1,12 @@
 // apps/mobile/src/hooks/usePropertySync.ts
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
 import { usePropertyStore } from "../stores/propertyStore";
 import { useOfflineQueue } from "./useOfflineQueue";
-import { syncOperation } from "@repo/web/lib/api"; // shared sync function
+import { syncOperation } from "@repo/web/lib/api";
 import { resolveConflict } from "@repo/shared/domain/SyncConflictResolver";
-import type { Property } from "@repo/shared/domain/Property";
+import type { QueuedOperation } from "./useOfflineQueue";
 
 /**
  * Hook que orquestra a sincronização de propriedades.
@@ -22,31 +23,85 @@ import type { Property } from "@repo/shared/domain/Property";
  */
 export function usePropertySync() {
   const updateProperty = usePropertyStore((s) => s.updateProperty);
+  const markSynced = usePropertyStore((s) => s.markSynced);
+
+  // Ref para evitar múltiplos processamentos simultâneos por eventos de rede
+  const isSyncingRef = useRef(false);
 
   const { enqueue, processQueue, pending, processing } = useOfflineQueue({
-    executor: async (op) => {
+    executor: async (op: QueuedOperation) => {
       const result = await syncOperation({
         type: op.type,
         entityId: op.entityId,
         payload: op.payload,
       });
 
+      if (result.success) {
+        // Sync bem-sucedido, nada a fazer além do que o useOfflineQueue já controla
+        return;
+      }
+
       if (!result.success && result.serverVersion) {
-        // Conflito detectado — resolver
-        const localProperty = usePropertyStore.getState().properties[op.entityId];
+        // Conflito detectado: server retornou uma versão diferente da local
+        const localProperty =
+          usePropertyStore.getState().properties[op.entityId];
+
         if (localProperty && result.serverVersion) {
-          // TODO: Candidato implementa a resolução usando resolveConflict()
-          // e aplica o resultado via updateProperty()
+          const resolved = resolveConflict(
+            localProperty,
+            result.serverVersion,
+            localProperty, // fallback: sem base conhecida, usa local como ancestra
+          );
+
+          // Aplica o resultado da resolução no store local
+          updateProperty(op.entityId, resolved.resolved);
+
+          // Conflito resolvido localmente — não lança erro, considera como sucesso
+          return;
         }
       }
 
-      if (!result.success && !result.serverVersion) {
-        throw new Error(result.error ?? "Sync failed");
-      }
+      // Falha sem conflito (erro de rede, servidor indisponível, etc.)
+      // Lança erro para o useOfflineQueue aplicar backoff e retry
+      throw new Error(result.error ?? "Sync failed");
     },
   });
 
-  // TODO: Candidato pode adicionar listener de NetInfo aqui
+  const syncWhenOnline = useCallback(async () => {
+    if (isSyncingRef.current || pending.length === 0) return;
+
+    isSyncingRef.current = true;
+    try {
+      await processQueue();
+      markSynced();
+    } finally {
+      isSyncingRef.current = false;
+    }
+  }, [pending.length, processQueue, markSynced]);
+
+  useEffect(() => {
+    // Listener de conectividade — dispara sync sempre que voltar online
+    const unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
+      const isOnline = state.isConnected && state.isInternetReachable;
+      if (isOnline) {
+        syncWhenOnline();
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [syncWhenOnline]);
+
+  // Tenta sincronizar na montagem também, caso já esteja online
+  useEffect(() => {
+    NetInfo.fetch().then((state: NetInfoState) => {
+      const isOnline = state.isConnected && state.isInternetReachable;
+      if (isOnline) {
+        syncWhenOnline();
+      }
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     enqueue,
