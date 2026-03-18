@@ -13,12 +13,12 @@ PropertyListItem usa React.memo + useCallback para evitar re-renders desnecessá
 
 ## 3. Trade-off do Sync (máx 5 linhas)
 
-<!-- A resolução de conflito que implementei tem uma fraqueza: [descreva]. Se tivesse mais tempo, eu: [descreva]. -->
+A principal fraqueza é não persistir o estado de conflito para revisão posterior. Quando requiresReview é true, o campo é atualizado no store mas a informação de que aquele campo precisa de atenção humana se perde — não há fila de revisão, notificação nem UI para o corretor resolver o impasse. Se tivesse mais tempo, adicionaria uma estrutura de pendingReviews no store alimentada pelos conflitos com requiresReview=true, e exporia isso na tela do imóvel.
 
 ## 4. O bug mais difícil (máx 3 linhas)
 
-<!-- O bug que mais demorei para encontrar foi: [qual]. Porque: [por que foi difícil]. -->
+O bug mais difícil foi no useOfflineQueue: o processQueue lia o estado da fila via closure stale — quando o executor terminava e tentava marcar a operação como DONE, o estado capturado já estava desatualizado. A solução foi espelhar o queue num ref atualizado a cada setState, garantindo leitura sempre fresca sem adicionar queue como dependência do useCallback.
 
 ## 5. O que eu NÃO mexeria em produção (máx 3 linhas)
 
-<!-- Se este fosse um app real, o arquivo que eu NÃO refatoraria agora é: [qual]. Porque: [justifique — custo vs benefício]. -->
+Não refatoraria SyncConflictResolver.ts nem nenhuma lógica que depende de contrato com o backend (formato de conflito, campos de status, estrutura do payload). Regras como "status é controlado pelo backoffice" e "preço é definido pelo proprietário" existem por decisão de produto - refatorar sem alinhamento com back e negócio é introduzir bug silencioso em sincronização, que é o pior lugar para errar.
