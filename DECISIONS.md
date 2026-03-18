@@ -9,7 +9,7 @@ A lógica de dados foi mantida no Server Component (page.tsx), que consome searc
 
 ## 2. Próximos passos de performance RN (máx 5 linhas)
 
-<!-- Se este app tivesse 10.000 itens com imagens, vídeos inline e seções colapsáveis, quais seriam suas 3 primeiras ações para garantir 60fps? NÃO repita o que já fez (memo, selector, Reanimated). Queremos o PRÓXIMO nível. -->
+PropertyListItem usa React.memo + useCallback para evitar re-renders desnecessários em lista. propertyStore usa cache manual por referência nos selectors, equivalente a useMemo fora do React. AnimatedHeader roda interpolações na UI thread via Reanimated, zerando carga no JS thread. Sem o memo e o cache, qualquer update no store causaria N re-renders (um por item), estourando o render-count.test. Para 10k itens: FlashList com estimatedItemSize, expo-image para decode assíncrono, e estado de colapso no Zustand com getItemLayout estático.
 
 ## 3. Trade-off do Sync (máx 5 linhas)
 
